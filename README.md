@@ -75,7 +75,7 @@ You can request the following options to the `CompileFreeCADQt3rdPartiesInDebug.
 | --ps-version=X.X.X    | last                  | Download, compile and install the specified PySide/Shiboken version (if not already done) | --ps-version=last<br />--ps-version=6.3.1   |
 | --ps-force-recompile  | (disabled)            | If specified and if the desired PySide/Shiboken version has already been compiled previously, compilation files and binaries build will be deleted and compiled again. | --ps-force-recompile                        |
 | --c3d-version=X.X.X   | last                  | Download, compile and install the specificied Coin3D version (if not already done) | --c3d-version=last<br />--c3d-version=3.1.0 |
-| --c3d-force-recompile | (disabled)            | If specified and if the desired Coind3D version has already been compiled previously, compilation files and binaries build will be deleted and compiled again. | --c3d-force-recompile                       |
+| --c3d-force-recompile | (disabled)            | If specified and if the desired Coin3D version has already been compiled previously, compilation files and binaries build will be deleted and compiled again. | --c3d-force-recompile                       |
 | --fc-version=X.X.X    | last                  | Download, compile and install the specified FreeCAD version (if not already done) | --fc-version=last<br />--fc-version=0.21.2  |
 | --fc-force-recompile  | (disabled)            | If specified and if the desired FreeCAD version has already been compiled previously, compilation files and binaries build will be deleted and compiled again. | --fc-force-recompile                        |
 
