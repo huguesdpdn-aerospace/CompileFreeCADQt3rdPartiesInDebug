@@ -1,9 +1,17 @@
 #!/bin/bash
 
+SCRIPT_DIRECTORY="$(cd "$(dirname "$0")" && pwd)"
+if [[ -d "${HOME}/.local/share" ]]
+then
+    CACHE_PATH="${HOME}/.local/share/FreeCADDebug"
+else
+    CACHE_PATH="${HOME}/.FreeCADDebug"
+fi
 UNKNOWN_ARGUMENT=0
 INSTALL_PATH="${HOME}/FreeCADDebug"
 QT_VERSION="last"
 QT_FORCE_RECOMPILE=0
+QT_PATH=""
 PS_VERSION="last"
 PS_FORCE_RECOMPILE=0
 CN_VERSION="last"
@@ -147,6 +155,16 @@ parseSingleArgument()
     fi
 }
 
+checkInstallPath()
+{
+    INSTALL_PATH=${INSTALL_PATH%/}
+    if [[ "$(echo "${INSTALL_PATH}" | cut -c 1)" == "." || "$(echo "${INSTALL_PATH}" | cut -c 1)" == "~" ]]
+    then
+	INSTALL_PATH=""
+	echo "[ERROR]: You are forbidden to use a relative install path - Please provide the full path"
+    fi
+}
+
 checkArguments()
 {
     UNKNOWN_ARGUMENT=0
@@ -191,6 +209,28 @@ checkArguments()
     fi
 }
 
+gitPullMyOwnRepo()
+{
+    if [ -f "${CACHE_PATH}/LAST_GIT_PULL" ]
+    then
+	find "${CACHE_PATH}" -type f -name LAST_GIT_PULL -mtime +60 -delete
+    fi
+    if [ ! -f "${CACHE_PATH}/LAST_GIT_PULL" ]
+    then
+	if [ -d "${SCRIPT_DIRECTORY}/.git" ]
+	then
+	    cd "${SCRIPT_DIRECTORY}"
+	    echo "[INFO ]: Updating this script ... a GIT authentication may be require:"
+            if git pull
+	    then
+		touch "${CACHE_PATH}/LAST_GIT_PULL"
+		echo "[INFO ]: You must restart this script as you just did since we just update this script."
+		kill -s TERM $$
+	    fi
+	fi
+    fi
+}
+
 determinePlatform()
 {
     PLATFORM_NAME="$(grep '^NAME=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 6-)"
@@ -202,17 +242,39 @@ setPackagesToInstall()
     if [[ "${PLATFORM_NAME}" == "ubuntu" && "${PLATFORM_VERSION}" =~ 24.* ]]
     then
 	PACKAGE_MANAGER_COMMAND="apt-get install -y"
-	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" )
+	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "ninja-build" "git" "perl")
+    else
+	PACKAGE_MANAGER_COMMAND=""
+	PACKAGES_LIST=()
+	echo "[ERROR]: Your platform is not managed by this script - Your platform: [${PLATFORM_NAME}] and version [${PLATFORM_VERSION}]"
+	echo "[ERROR]: If you wish, you can request its implementation by:"
+	echo "[ERROR]: creating an issue on GIT: https://github.com/huguesdpdn-aerospace/CompileFreeCADQt3rdPartiesInDebug/issues"
+	echo "[ERROR]:     on the FreeCAD forum: https://forum.freecad.org/viewforum.php?f=4&sid=492b04c6ea9185bc2a97f3115ce31dac by tagging @huguesdpdn-aerospace"
     fi
 }
 
 installPackages()
 {
-    packages_list_to_install=()
-    for package_to_install in ${PACKAGES_LIST[@]}
-    do
-	packages_list_to_install+=("${package_to_install}")
-	if [[ ${#packages_list_to_install[@]} -ge ${PACKAGES_INSTALL_PER} ]]
+    if [ -f "${CACHE_PATH}/INSTALL_OK" ]
+    then
+	find "${CACHE_PATH}" -type f -name INSTALL_OK -mtime +60 -delete
+    fi
+    if [ ! -f "${CACHE_PATH}/INSTALL_OK" -a -n "${PACKAGE_MANAGER_COMMAND}" ]
+    then
+	packages_list_to_install=()
+	for package_to_install in ${PACKAGES_LIST[@]}
+	do
+	    packages_list_to_install+=("${package_to_install}")
+	    if [[ ${#packages_list_to_install[@]} -ge ${PACKAGES_INSTALL_PER} ]]
+	    then
+		if ! sudo ${PACKAGE_MANAGER_COMMAND} ${packages_list_to_install[@]}
+		then
+		    echo "[ERROR]: Did not succeed to install packages ${packages_list_to_install[@]}"
+		fi
+		packages_list_to_install=()
+	    fi
+	done
+	if [[ ${#packages_list_to_install[@]} -gt 0 ]]
 	then
 	    if ! sudo ${PACKAGE_MANAGER_COMMAND} ${packages_list_to_install[@]}
 	    then
@@ -220,14 +282,28 @@ installPackages()
 	    fi
 	    packages_list_to_install=()
 	fi
-    done
-    if [[ ${#packages_list_to_install[@]} -gt 0 ]]
+	touch "${CACHE_PATH}/INSTALL_OK"
+    fi
+}
+
+downloadQT()
+{
+    cd "${INSTALL_PATH}"
+    QT_PATH="${INSTALL_PATH}/${QT_VERSION}"
+    if [ ! -d "${QT_PATH}" ]
     then
-	if ! sudo ${PACKAGE_MANAGER_COMMAND} ${packages_list_to_install[@]}
+	mkdir -p "${QT_PATH}"
+    fi
+    if [ -d "${QT_PATH}" ]
+    then
+	cd "${QT_PATH}"
+	if [ ! -d ".git" ]
 	then
-	    echo "[ERROR]: Did not succeed to install packages ${packages_list_to_install[@]}"
+	    cd "${INSTALL_PATH}"
+	    git clone https://code.qt.io/qt/qt5.git "${QT_PATH}"
+	    cd "${QT_PATH}"
 	fi
-	packages_list_to_install=()
+	
     fi
 }
 
@@ -260,7 +336,17 @@ then
     echo "[ERROR]: Fail creating the install directory in ${INSTALL_PATH} - Stopping"
     exit 1
 fi
+
+mkdir -p "${CACHE_PATH}"
+
+gitPullMyOwnRepo
 determinePlatform
+checkInstallPath
 checkArguments
 setPackagesToInstall
+if [[ -z "${PACKAGE_MANAGER_COMMAND}" ]]
+then
+    exit 1
+fi
 installPackages
+downloadQT
