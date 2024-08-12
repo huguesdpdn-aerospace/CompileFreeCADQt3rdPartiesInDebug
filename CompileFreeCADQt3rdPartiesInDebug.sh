@@ -10,6 +10,11 @@ CN_VERSION="last"
 CN_FORCE_RECOMPILE=0
 FC_VERSION="last"
 FC_FORCE_RECOMPILE=0
+PLATFORM_NAME=""
+PLATFORM_VERSION=""
+PACKAGES_LIST=()
+PACKAGES_INSTALL_PER=8
+PACKAGE_MANAGER_COMMAND=""
 
 parseVersionOn3Digits()
 {
@@ -186,6 +191,38 @@ checkArguments()
     fi
 }
 
+determinePlatform()
+{
+    PLATFORM_NAME="$(grep '^NAME=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 6-)"
+    PLATFORM_VERSION="$(grep '^VERSION_ID=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 12-)"
+}
+
+setPackagesToInstall()
+{
+    if [[ "${PLATFORM_NAME}" == "ubuntu" && "${PLATFORM_VERSION}" =~ 24.* ]]
+    then
+	PACKAGE_MANAGER_COMMAND="apt-get install -y"
+	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "emacs" "vi" "vim" "nano" )
+    fi
+}
+
+installPackages()
+{
+    packages_list_to_install=()
+    for package_to_install in ${PACKAGES_LIST[@]}
+    do
+	packages_list_to_install+=("${package_to_install}")
+	if [[ ${#packages_list_to_install[@]} -ge ${PACKAGES_INSTALL_PER} ]]
+	then
+	    if ! sudo ${PACKAGE_MANAGER_COMMAND} ${packages_list_to_install[@]}
+	    then
+		echo "[ERROR]: Did not succeed to install packages ${packages_list_to_install[@]}"
+	    fi
+	    packages_list_to_install=()
+	fi
+    done
+}
+
 total_unknown_arguments=0
 parseSingleArgument "${1}"
 ((total_unknown_arguments=total_unknown_arguments+UNKNOWN_ARGUMENT))
@@ -215,5 +252,7 @@ then
     echo "[ERROR]: Fail creating the install directory in ${INSTALL_PATH} - Stopping"
     exit 1
 fi
+determinePlatform
 checkArguments
-
+setPackagesToInstall
+installPackages
