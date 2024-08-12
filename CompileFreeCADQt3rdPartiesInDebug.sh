@@ -8,15 +8,19 @@ else
     CACHE_PATH="${HOME}/.FreeCADDebug"
 fi
 INSTALL_PATH="${HOME}/FreeCADDebug"
-QT_VERSION="last"
+QT_VERSION_3NUMBERS="last-stable"
+QT_VERSION_OFFSET=0
 QT_FORCE_RECOMPILE=0
 QT_PATH=""
 QT_CURRENT_TAG=""
-PS_VERSION="last"
+PS_VERSION_3NUMBERS="last-stable"
+PS_VERSION_OFFSET=0
 PS_FORCE_RECOMPILE=0
-CN_VERSION="last"
+CN_VERSION_3NUMBERS="last-stable"
+CN_VERSION_OFFSET=0
 CN_FORCE_RECOMPILE=0
-FC_VERSION="last"
+FC_VERSION_3NUMBERS="last-stable"
+FC_VERSION_OFFSET=0
 FC_FORCE_RECOMPILE=0
 PLATFORM_NAME=""
 PLATFORM_VERSION=""
@@ -27,17 +31,51 @@ PACKAGE_MANAGER_COMMAND_INSTALL=""
 
 parseVersionOn3Digits()
 {
-    version="${1}"
-    if [[ "$(echo "${version}" | cut -c 1)" == "v" || "$(echo "${version}" | cut -c 1)" == "V" ]]
+    version="$(echo "${1}" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | sed -r 's/-alpha[0-9]+//g' | sed -r 's/-beta[0-9]+//g' | sed -r 's/-rc[0-9]+//g' )"
+    if [[ "$(echo "${version}" | cut -c 1)" == "v" ]]
     then
 	version="$(echo "${version}" | cut -c 2-)"
     fi
-    version="$(echo "${version}" | tr ';' '.' | tr ',' '.' | tr ':' '.' | tr '/' '.' | tr '-' '.' | tr '_' '.')"
-    if [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+    VERSION_3NUMBERS=""
+    VERSION_OFFSET=0
+    if [[ -n "$(echo "${version}" | grep --color=no -oE '[-+][0-9]+$')" ]]
     then
-	echo "${version}"
+	VERSION_OFFSET="$(echo "${version}" | grep --color=no -oE '[-+][0-9]+$')"
+	((VERSION_OFFSET=VERSION_OFFSET+0))
+    fi
+    if [[ "$(echo "${version}" | cut -c 1-12)" == "first-stable" || "$(echo "${version}" | cut -c 1-13)" == "first-release" ]]
+    then
+	VERSION_3NUMBERS="first-stable"
+    elif [[ "$(echo "${version}" | cut -c 1-11)" == "last-stable" || "$(echo "${version}" | cut -c 1-12)" == "last-release" ]]
+    then
+	VERSION_3NUMBERS="last-stable"
+    elif [[ "$(echo "${version}" | cut -c 1-7)" == "current" || "$(echo "${version}" | cut -c 1-6)" == "latest" || "$(echo "${version}" | cut -c 1-3)" == "dev" ]]
+    then
+	VERSION_3NUMBERS="current"
+	VERSION_OFFSET=0
     else
-	echo ""
+	VERSION_3NUMBERS="$(echo "${version}" | tr ';' '.' | tr ',' '.' | tr ':' '.' | tr '/' '.' | tr '-' '.' | tr '+' '.' | tr '_' '.')"
+	if [[ "${VERSION_3NUMBERS}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.* ]]
+	then
+	    VERSION_3NUMBERS="$(echo "${VERSION_3NUMBERS}" | grep --color=no -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+	elif [[ "${VERSION_3NUMBERS}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+	then
+	    VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+	    VERSION_OFFSET=0
+	elif [[ "${VERSION_3NUMBERS}" =~ ^[0-9]+\.[0-9]+\.[0-9]+.* ]]
+	then
+	    VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+	elif [[ "${VERSION_3NUMBERS}" =~ ^[0-9]+\.[0-9]+$ ]]
+	then
+	    VERSION_3NUMBERS="${VERSION_3NUMBERS}.0"
+	    VERSION_OFFSET=0
+	elif [[ "${VERSION_3NUMBERS}" =~ ^[0-9]+\.[0-9]+[-+].* ]]
+	then
+	    VERSION_3NUMBERS="${VERSION_3NUMBERS}.0"
+	else
+	    VERSION_3NUMBERS=""
+	fi
     fi
 }
 
@@ -49,7 +87,7 @@ parseSingleArgument()
 	argument="${argument}"
     elif [[ "${argument}" =~ ^install-path=.* ]]
     then
-	TEMP_PATH_TO_TEST="$(echo "${argument}" | cut -c 14-)"
+	TEMP_PATH_TO_TEST="$(echo "${1}" | cut -d '=' -f 2)"
 	if [ -z "${TEMP_PATH_TO_TEST}" ]
 	then
 	    echo "[ERROR]: You must provide a path after the --install-path , like so: --install-path=/my/path/to"
@@ -75,15 +113,19 @@ parseSingleArgument()
 	if [ -z "${TEMP_VERSION_TO_TEST}" ]
 	then
 	    echo "[ERROR]: You must provide a QT version after the --qt-version , like so: --qt-version=6.3.2"
-	    QT_VERSION=""
+	    QT_VERSION_3NUMBERS=""
+	    QT_VERSION_OFFSET=0
 	else
-	    TEMP_VERSION_TO_TEST="$(parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}")"
-	    if [ -z "${TEMP_VERSION_TO_TEST}" ]
+	    VERSION_3NUMBERS=""
+	    parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}"
+	    if [ -z "${VERSION_3NUMBERS}" ]
 	    then
 		echo "[ERROR]: QT version provided is invalid - Must be on 3 numbers separated by points, like: --qt-version=6.3.2"
-		QT_VERSION=""
+		QT_VERSION_3NUMBERS=""
+		QT_VERSION_OFFSET=0
 	    else
-		QT_VERSION="${TEMP_VERSION_TO_TEST}"
+		QT_VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+		QT_VERSION_OFFSET=${VERSION_OFFSET}
 	    fi
 	fi
     elif [[ "${argument}" =~ ^ps-version=.* ]]
@@ -92,15 +134,19 @@ parseSingleArgument()
 	if [ -z "${TEMP_VERSION_TO_TEST}" ]
 	then
 	    echo "[ERROR]: You must provide a PySide/Shiboken version after the --ps-version , like so: --ps-version=6.1.7"
-	    PS_VERSION=""
+	    PS_VERSION_3NUMBERS=""
+	    PS_VERSION_OFFSET=0
 	else
-	    TEMP_VERSION_TO_TEST="$(parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}")"
-	    if [ -z "${TEMP_VERSION_TO_TEST}" ]
+	    VERSION_3NUMBERS=""
+	    parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}"
+	    if [ -z "${VERSION_3NUMBERS}" ]
 	    then
 		echo "[ERROR]: PySide/Shiboken version provided is invalid - Must be on 3 numbers separated by points, like: --ps-version=6.1.7"
-		PS_VERSION=""
+		PS_VERSION_3NUMBERS=""
+		PS_VERSION_OFFSET=0
 	    else
-		PS_VERSION="${TEMP_VERSION_TO_TEST}"
+		PS_VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+		PS_VERSION_OFFSET=${VERSION_OFFSET}
 	    fi
 	fi
     elif [[ "${argument}" =~ ^c3d-version=.* ]]
@@ -109,15 +155,18 @@ parseSingleArgument()
 	if [ -z "${TEMP_VERSION_TO_TEST}" ]
 	then
 	    echo "[ERROR]: You must provide a Coin3D version after the --c3d-version , like so: --c3d-version=3.1.0"
-	    CN_VERSION=""
+	    CN_VERSION_3NUMBERS=""
+	    CN_VERSION_OFFSET=0
 	else
-	    TEMP_VERSION_TO_TEST="$(parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}")"
-	    if [ -z "${TEMP_VERSION_TO_TEST}" ]
+	    parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}"
+	    if [ -z "${VERSION_3NUMBERS}" ]
 	    then
 		echo "[ERROR]: Coind3D version provided is invalid - Must be on 3 numbers separated by points, like: --c3d-version=3.1.0"
-		CN_VERSION=""
+		CN_VERSION_3NUMBERS=""
+		CN_VERSION_OFFSET=0
 	    else
-		CN_VERSION="${TEMP_VERSION_TO_TEST}"
+		CN_VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+		CN_VERSION_OFFSET=${VERSION_OFFSET}
 	    fi
 	fi
     elif [[ "${argument}" =~ ^fc-version=.* ]]
@@ -126,15 +175,18 @@ parseSingleArgument()
 	if [ -z "${TEMP_VERSION_TO_TEST}" ]
 	then
 	    echo "[ERROR]: You must provide a FreeCAD version after the --fc-version , like so: --fc-version=0.21.2"
-	    FC_VERSION=""
+	    FC_VERSION_3NUMBERS=""
+	    FC_VERSION_OFFSET=0
 	else
-	    TEMP_VERSION_TO_TEST="$(parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}")"
-	    if [ -z "${TEMP_VERSION_TO_TEST}" ]
+	    parseVersionOn3Digits "${TEMP_VERSION_TO_TEST}"
+	    if [ -z "${VERSION_3NUMBERS}" ]
 	    then
 		echo "[ERROR]: FreeCAD version provided is invalid - Must be on 3 numbers separated by points, like: --fc-version=0.21.2"
-		FC_VERSION=""
+		FC_VERSION_3NUMBERS=""
+		FC_VERSION_OFFSET=0
 	    else
-		FC_VERSION="${TEMP_VERSION_TO_TEST}"
+		FC_VERSION_3NUMBERS="${VERSION_3NUMBERS}"
+		FC_VERSION_OFFSET="${VERSION_OFFSET}"
 	    fi
 	fi
     elif [[ "${argument}" =~ ^qt-force-recompile.* ]]
@@ -152,7 +204,6 @@ parseSingleArgument()
     else
 	echo "[ERROR]: Unknown argument '${1}' - Please check official documentation"
 	kill -s TERM $$
-
     fi
 }
 
@@ -176,30 +227,39 @@ checkArguments()
     if [ ! -d "${INSTALL_PATH}" ]
     then
 	echo "[ERROR]: Invalid install path argument - See above errors"
-    elif [[ -z "${QT_VERSION}" ]]
+	kill -s TERM $$
+    elif [[ -z "${QT_VERSION_3NUMBERS}" ]]
     then
 	echo "[ERROR]: Invalid QT version - See above errors"
-    elif [[ -z "${PS_VERSION}" ]]
+	kill -s TERM $$
+    elif [[ -z "${PS_VERSION_3NUMBERS}" ]]
     then
 	echo "[ERROR]: Invalid PySide/Shiboken version - See above errors"
-    elif [[ -z "${CN_VERSION}" ]]
+	kill -s TERM $$
+    elif [[ -z "${CN_VERSION_3NUMBERS}" ]]
     then
 	echo "[ERROR]: Invalid Coin3D version - See above errors"
-    elif [[ -z "${FC_VERSION}" ]]
+	kill -s TERM $$
+    elif [[ -z "${FC_VERSION_3NUMBERS}" ]]
     then
 	echo "[ERROR]: Invalid FreeCAD version - See above errors"
+	kill -s TERM $$
     elif [[ -z "${QT_FORCE_RECOMPILE}" || ("${QT_FORCE_RECOMPILE}" != "0" && "${QT_FORCE_RECOMPILE}" != "1") ]]
     then
 	echo "[ERROR]: Invalid QT recompile argument - See above errors"
+	kill -s TERM $$
     elif [[ -z "${PS_FORCE_RECOMPILE}" || ("${PS_FORCE_RECOMPILE}" != "0" && "${PS_FORCE_RECOMPILE}" != "1") ]]
     then
 	echo "[ERROR]: Invalid PySide/Shiboken recompile argument - See above errors"
+	kill -s TERM $$
     elif [[ -z "${CN_FORCE_RECOMPILE}" || ("${CN_FORCE_RECOMPILE}" != "0" && "${CN_FORCE_RECOMPILE}" != "1") ]]
     then
 	echo "[ERROR]: Invalid Coind3D recompile argument - See above errors"
+	kill -s TERM $$
     elif [[ -z "${FC_FORCE_RECOMPILE}" || ("${FC_FORCE_RECOMPILE}" != "0" && "${FC_FORCE_RECOMPILE}" != "1") ]]
     then
 	echo "[ERROR]: Invalid FreeCAD recompile argument - See above errors"
+	kill -s TERM $$
     else
 	mkdir -p "${CACHE_PATH}"	
     fi
@@ -288,10 +348,60 @@ installPackages()
     fi
 }
 
-downloadQT()
+QTSelectDesiredVersion()
+{
+    tags_list_available_in_git_repo=( $(git -c 'versionsort.suffix=-' ls-remote --exit-code --refs --sort='version:refname' --tags https://code.qt.io/qt/qt5.git '*.*.*' | cut -d '/' -f 3 | tr -d ' ' | tr '[:upper:]' '[:lower:]' | sed 's/^v//g' | uniq | tr '\n' ' ') )
+    if [[ "${QT_VERSION_3NUMBERS}" == "first-stable" ]]
+    then
+	version_found_index=0
+    elif [[ "${QT_VERSION_3NUMBERS}" == "last-stable" ]]
+    then
+	version_found_index=${#tags_list_available_in_git_repo[@]}
+	((version_found_index=version_found_index-1))
+    elif [[ "${QT_VERSION_3NUMBERS}" == "current" ]]
+    then
+	version_found_index=-1
+	QT_VERSION_3NUMBERS="@"
+    else
+	version_found_index=-1
+	for tag_available_in_git_repo_index in ${!tags_list_available_in_git_repo[@]}
+	do
+	    if [[ "${tags_list_available_in_git_repo[${tag_available_in_git_repo_index}]}" == "${QT_VERSION_3NUMBERS}" ]]
+	    then
+		version_found_index=${tag_available_in_git_repo_index}
+		break
+	    fi
+	done
+    fi
+    if [[ "${QT_VERSION_3NUMBERS}" == "@" ]]
+    then
+	QT_VERSION_OFFSET=0
+    elif [[ ${QT_VERSION_OFFSET} -eq 0 ]]
+    then
+	QT_VERSION_3NUMBERS="${tags_list_available_in_git_repo[version_found_index]}"
+	QT_VERSION_OFFSET=0
+    else
+	new_version_after_offset=0
+	((new_version_after_offset=version_found_index+QT_VERSION_OFFSET))
+	if [[ ${new_version_after_offset} -lt 0 ]]
+	then
+	    echo "[ERROR]: The negative offset tag that your requested from tag '${QT_VERSION_3NUMBERS}' is too low - No so old tag found - Aborting"
+	    kill -s TERM $$
+	elif [[ ${new_version_after_offset} -ge ${#tags_list_available_in_git_repo[@]} ]]
+	then
+	    echo "[ERROR]: The positive offset tag that your requested from tag '${QT_VERSION_3NUMBERS}' is too high - No so recent tag found - Aborting"
+	    kill -s TERM $$
+	else
+	    QT_VERSION_3NUMBERS="${tags_list_available_in_git_repo[${new_version_after_offset}]}"
+	    QT_VERSION_OFFSET=0
+	fi
+    fi
+}
+
+QTDownload()
 {
     cd "${INSTALL_PATH}"
-    QT_PATH="${INSTALL_PATH}/QT_${QT_VERSION}"
+    QT_PATH="${INSTALL_PATH}/QT_${QT_VERSION_3NUMBERS}"
     if [ ! -d "${QT_PATH}" ]
     then
 	mkdir -p "${QT_PATH}"
@@ -311,20 +421,20 @@ downloadQT()
 	else
 	    QT_CURRENT_TAG="$(git describe --exact-match --tags)"
 	fi
-	if [[ "${QT_CURRENT_TAG}" != "v${QT_VERSION}" ]]
+	if [[ "${QT_CURRENT_TAG}" != "v${QT_VERSION_3NUMBERS}" ]]
 	then
 	    TAGS_LIST=( $(git --no-pager tag --list | grep --color=no -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | tr '\n' ' ') )
 	    TAG_VERSION=""
 	    for git_tag in ${TAGS_LIST[@]}
 	    do
-		if [[ "${git_tag}" == "v${QT_VERSION}" ]]
+		if [[ "${git_tag}" == "v${QT_VERSION_3NUMBERS}" ]]
 		then
 		    TAG_VERSION="${git_tag}"
 		fi
 	    done
 	    if [[ -z "${TAG_VERSION}" ]]
 	    then
-		echo "[ERROR]: Tag version '${QT_VERSION}' not found in QT repository - Cleaning... and aborting"
+		echo "[ERROR]: Tag version '${QT_VERSION_3NUMBERS}' not found in QT repository - Cleaning... and aborting"
 		cd "${INSTALL_PATH}"
 		rm -rf "${QT_PATH}"
 		kill -s TERM $$
@@ -373,7 +483,7 @@ downloadQT()
     fi
 }
 
-configureQT()
+QTConfigure()
 {
     cd "${QT_PATH}"
 }
@@ -393,7 +503,10 @@ checkInstallPath
 checkArguments
 setPackagesToInstall
 installPackages
-downloadQT
-configureQT
+QTSelectDesiredVersion
+#QTDownload
+QTConfigure
 
+echo "QT Version = [${QT_VERSION_3NUMBERS}] with offset [${QT_VERSION_OFFSET}]"
 #Add disk space checker
+
