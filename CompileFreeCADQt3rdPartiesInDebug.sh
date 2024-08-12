@@ -373,6 +373,11 @@ downloadQT()
     fi
 }
 
+configureQT()
+{
+    cd "${QT_PATH}"
+}
+
 parseSingleArgument "${1}"
 parseSingleArgument "${2}"
 parseSingleArgument "${3}"
@@ -389,3 +394,6 @@ checkArguments
 setPackagesToInstall
 installPackages
 downloadQT
+configureQT
+
+#Add disk space checker
