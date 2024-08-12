@@ -202,7 +202,7 @@ setPackagesToInstall()
     if [[ "${PLATFORM_NAME}" == "ubuntu" && "${PLATFORM_VERSION}" =~ 24.* ]]
     then
 	PACKAGE_MANAGER_COMMAND="apt-get install -y"
-	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "emacs" "vi" "vim" "nano" )
+	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" )
     fi
 }
 
@@ -221,6 +221,14 @@ installPackages()
 	    packages_list_to_install=()
 	fi
     done
+    if [[ ${#packages_list_to_install[@]} -gt 0 ]]
+    then
+	if ! sudo ${PACKAGE_MANAGER_COMMAND} ${packages_list_to_install[@]}
+	then
+	    echo "[ERROR]: Did not succeed to install packages ${packages_list_to_install[@]}"
+	fi
+	packages_list_to_install=()
+    fi
 }
 
 total_unknown_arguments=0
