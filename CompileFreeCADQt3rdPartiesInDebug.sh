@@ -1,6 +1,16 @@
 #!/bin/bash
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_ARG0="${0}"
+SCRIPT_ARG1="${1}"
+SCRIPT_ARG2="${2}"
+SCRIPT_ARG3="${3}"
+SCRIPT_ARG4="${4}"
+SCRIPT_ARG5="${5}"
+SCRIPT_ARG6="${6}"
+SCRIPT_ARG7="${7}"
+SCRIPT_ARG8="${8}"
+SCRIPT_ARG9="${9}"
 if [[ -d "${HOME}/.local/share" ]]
 then
     CACHE_PATH="${HOME}/.local/share/FreeCADDebug"
@@ -27,6 +37,7 @@ PLATFORM_VERSION=""
 PACKAGES_LIST=()
 PACKAGES_INSTALL_PER=8
 PACKAGE_MANAGER_COMMAND_UPDATE=""
+PACKAGE_MANAGER_COMMAND_UPGRADE=""
 PACKAGE_MANAGER_COMMAND_INSTALL=""
 
 parseVersionOn3Digits()
@@ -44,7 +55,11 @@ parseVersionOn3Digits()
 	VERSION_OFFSET="$(echo "${version}" | grep --color=no -oE '[-+][0-9]+$')"
 	((VERSION_OFFSET=VERSION_OFFSET+0))
     fi
-    if [[ "$(echo "${version}" | cut -c 1-12)" == "first-stable" || "$(echo "${version}" | cut -c 1-13)" == "first-release" ]]
+    if   [[ "$(echo "${version}" | cut -c 1-4)" == "pull" ]]
+    then
+	VERSION_3NUMBERS="pull"
+	VERSION_OFFSET=0
+    elif [[ "$(echo "${version}" | cut -c 1-12)" == "first-stable" || "$(echo "${version}" | cut -c 1-13)" == "first-release" ]]
     then
 	VERSION_3NUMBERS="first-stable"
     elif [[ "$(echo "${version}" | cut -c 1-11)" == "last-stable" || "$(echo "${version}" | cut -c 1-12)" == "last-release" ]]
@@ -280,8 +295,8 @@ gitPullMyOwnRepo()
             if git pull
 	    then
 		touch "${CACHE_PATH}/LAST_GIT_PULL"
-		echo "[INFO ]: You must restart this script as you just did since we just update this script."
-		kill -s TERM $$
+		echo "[INFO ]: We just updated this script - We are going to restart it with the same arguments as you provided."
+		exec ./CompileFreeCADQt3rdPartiesInDebug.sh "${SCRIPT_ARG1}" "${SCRIPT_ARG2}" "${SCRIPT_ARG3}" "${SCRIPT_ARG4}" "${SCRIPT_ARG5}" "${SCRIPT_ARG6}" "${SCRIPT_ARG7}" "${SCRIPT_ARG8}" "${SCRIPT_ARG9}"
 	    fi
 	fi
     fi
@@ -298,10 +313,12 @@ setPackagesToInstall()
     if [[ "${PLATFORM_NAME}" == "ubuntu" && "${PLATFORM_VERSION}" =~ 24.* ]]
     then
 	PACKAGE_MANAGER_COMMAND_UPDATE="apt-get update"
+	PACKAGE_MANAGER_COMMAND_UPGRADE="apt-get upgrade"
 	PACKAGE_MANAGER_COMMAND_INSTALL="apt-get install -y"
 	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "ninja-build" "git" "perl")
     else
 	PACKAGE_MANAGER_COMMAND_UPDATE=""
+	PACKAGE_MANAGER_COMMAND_UPGRADE=""
 	PACKAGE_MANAGER_COMMAND_INSTALL=""
 	PACKAGES_LIST=()
 	echo "[ERROR]: Your platform is not managed by this script - Your platform: [${PLATFORM_NAME}] and version [${PLATFORM_VERSION}]"
@@ -312,22 +329,56 @@ setPackagesToInstall()
     fi
 }
 
+updateUpgradePackages()
+{
+    if [ -f "${CACHE_PATH}/UPDATE_UPGRADE_OK" ]
+    then
+	find "${CACHE_PATH}" -type f -name UPDATE_UPGRADE_OK -mtime +60 -delete
+    fi
+    if [ ! -f "${CACHE_PATH}/UPDATE_UPGRADE_OK" ]
+    then
+	if [ $(id -u) -ne 0 ]
+	then
+	    sudo ${PACKAGE_MANAGER_COMMAND_UPDATE}
+	    update_return_code=$?
+	    sudo ${PACKAGE_MANAGER_COMMAND_UPGRADE}
+	    upgrade_return_code=$?
+	else
+	    ${PACKAGE_MANAGER_COMMAND_UPDATE}
+	    update_return_code=$?
+	    ${PACKAGE_MANAGER_COMMAND_UPGRADE}
+	    upgrade_return_code=$?
+	fi
+	if [[ ${update_return_code} -eq 0 && ${upgrade_return_code} -eq 0 ]]
+	then
+	    touch "${CACHE_PATH}/UPDATE_UPGRADE_OK"
+	fi
+    fi
+}
+
 installPackages()
 {
     if [ -f "${CACHE_PATH}/INSTALL_OK" ]
     then
-	find "${CACHE_PATH}" -type f -name INSTALL_OK -mtime +60 -delete
+	find "${CACHE_PATH}" -type f -name INSTALL_OK -mtime +180 -delete
     fi
     if [ ! -f "${CACHE_PATH}/INSTALL_OK" -a -n "${PACKAGE_MANAGER_COMMAND_INSTALL}" ]
     then
-	sudo ${PACKAGE_MANAGER_COMMAND_UPDATE}
 	packages_list_to_install=()
 	for package_to_install in ${PACKAGES_LIST[@]}
 	do
 	    packages_list_to_install+=("${package_to_install}")
 	    if [[ ${#packages_list_to_install[@]} -ge ${PACKAGES_INSTALL_PER} ]]
 	    then
-		if ! sudo ${PACKAGE_MANAGER_COMMAND_INSTALL} ${packages_list_to_install[@]}
+		if [ $(id -u) -ne 0 ]
+		then
+		    sudo ${PACKAGE_MANAGER_COMMAND_INSTALL} ${packages_list_to_install[@]}
+		    install_return_code=$?
+		else
+		    ${PACKAGE_MANAGER_COMMAND_INSTALL} ${packages_list_to_install[@]}
+		    install_return_code=$?
+		fi
+		if [[ ${install_return_code} -ne 0 ]]
 		then
 		    echo "[ERROR]: Did not succeed to install packages ${packages_list_to_install[@]} - Check above errors"
 		    kill -s TERM $$
@@ -358,7 +409,7 @@ QTSelectDesiredVersion()
     then
 	version_found_index=${#tags_list_available_in_git_repo[@]}
 	((version_found_index=version_found_index-1))
-    elif [[ "${QT_VERSION_3NUMBERS}" == "current" ]]
+    elif [[ "${QT_VERSION_3NUMBERS}" == "current" || "${QT_VERSION_3NUMBERS}" == "pull" ]]
     then
 	version_found_index=-1
 	QT_VERSION_3NUMBERS="@"
@@ -421,24 +472,18 @@ QTDownload()
 	else
 	    QT_CURRENT_TAG="$(git describe --exact-match --tags)"
 	fi
-	if [[ "${QT_CURRENT_TAG}" != "v${QT_VERSION_3NUMBERS}" ]]
+	if [[ "${QT_VERSION_3NUMBERS}" == "current" || "${QT_VERSION_3NUMBERS}" == "pull" ]]
 	then
-	    TAGS_LIST=( $(git --no-pager tag --list | grep --color=no -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | tr '\n' ' ') )
-	    TAG_VERSION=""
-	    for git_tag in ${TAGS_LIST[@]}
-	    do
-		if [[ "${git_tag}" == "v${QT_VERSION_3NUMBERS}" ]]
-		then
-		    TAG_VERSION="${git_tag}"
-		fi
-	    done
-	    if [[ -z "${TAG_VERSION}" ]]
+	    if [[ "${QT_VERSION_3NUMBERS}" == "pull" ]]
 	    then
-		echo "[ERROR]: Tag version '${QT_VERSION_3NUMBERS}' not found in QT repository - Cleaning... and aborting"
-		cd "${INSTALL_PATH}"
-		rm -rf "${QT_PATH}"
-		kill -s TERM $$
+		if ! git pull
+		then
+		    echo "[ERROR]: Fail to git pull QT repository"
+		    kill -s TERM $$
+		fi
 	    fi
+	elif [[ -n "${QT_CURRENT_TAG}" && "${QT_CURRENT_TAG}" != "v${QT_VERSION_3NUMBERS}" ]]
+	then
 	    if git checkout "${TAG_VERSION}"
 	    then
 		QT_CURRENT_TAG="${TAG_VERSION}"
@@ -485,28 +530,41 @@ QTDownload()
 
 QTConfigure()
 {
+    QT_PATH="${INSTALL_PATH}/QT_${QT_VERSION_3NUMBERS}"
     cd "${QT_PATH}"
+    mkdir -p "build"
+    mkdir -p "install"
+    cd "build"
+    
+    ../configure -- "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
 }
 
-parseSingleArgument "${1}"
-parseSingleArgument "${2}"
-parseSingleArgument "${3}"
-parseSingleArgument "${4}"
-parseSingleArgument "${5}"
-parseSingleArgument "${6}"
-parseSingleArgument "${7}"
-parseSingleArgument "${8}"
-parseSingleArgument "${9}"
+QTBuild()
+{
+    echo "To implement..."
+}
+
+parseSingleArgument "${SCRIPT_ARG1}"
+parseSingleArgument "${SCRIPT_ARG2}"
+parseSingleArgument "${SCRIPT_ARG3}"
+parseSingleArgument "${SCRIPT_ARG4}"
+parseSingleArgument "${SCRIPT_ARG5}"
+parseSingleArgument "${SCRIPT_ARG6}"
+parseSingleArgument "${SCRIPT_ARG7}"
+parseSingleArgument "${SCRIPT_ARG8}"
+parseSingleArgument "${SCRIPT_ARG9}"
 gitPullMyOwnRepo
 determinePlatform
 checkInstallPath
 checkArguments
 setPackagesToInstall
+updateUpgradePackages
 installPackages
 QTSelectDesiredVersion
-#QTDownload
+QTDownload
 QTConfigure
+QTBuild
 
-echo "QT Version = [${QT_VERSION_3NUMBERS}] with offset [${QT_VERSION_OFFSET}]"
+#TODO
 #Add disk space checker
 
