@@ -324,8 +324,8 @@ setPackagesToInstall()
     elif [[ "${PLATFORM_NAME}" == "arch linux" ]]
     then
 	PACKAGE_MANAGER_COMMAND_UPDATE="pacman -y"
-	PACKAGE_MANAGER_COMMAND_UPGRADE="pacman -Syu"
-	PACKAGE_MANAGER_COMMAND_INSTALL="pacman -S"
+	PACKAGE_MANAGER_COMMAND_UPGRADE="pacman -Syu --noconfirm"
+	PACKAGE_MANAGER_COMMAND_INSTALL="pacman -S --noconfirm"
 	PACKAGES_LIST=( "gcc" "cmake" "valgrind" "python" "ninja" "git" "perl")
     else
 	PACKAGE_MANAGER_COMMAND_UPDATE=""
