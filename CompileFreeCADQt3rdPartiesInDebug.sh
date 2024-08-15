@@ -282,6 +282,7 @@ checkArguments()
 
 gitPullMyOwnRepo()
 {
+    mkdir -p "${CACHE_PATH}"
     if [ -f "${CACHE_PATH}/LAST_GIT_PULL" ]
     then
 	find "${CACHE_PATH}" -type f -name LAST_GIT_PULL -mtime +60 -delete
@@ -306,6 +307,10 @@ determinePlatform()
 {
     PLATFORM_NAME="$(grep '^NAME=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 6-)"
     PLATFORM_VERSION="$(grep '^VERSION_ID=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 12-)"
+    if [[ -z "${PLATFORM_VERSION}" ]]
+    then
+	PLATFORM_VERSION="$(grep '^IMAGE_VERSION=' /etc/os-release | tr -d "'" | tr -d '"' | tr '[:upper:]' '[:lower:]' | cut -c 15-)"
+    fi
 }
 
 setPackagesToInstall()
@@ -316,6 +321,12 @@ setPackagesToInstall()
 	PACKAGE_MANAGER_COMMAND_UPGRADE="apt-get upgrade"
 	PACKAGE_MANAGER_COMMAND_INSTALL="apt-get install -y"
 	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "ninja-build" "git" "perl")
+    elif [[ "${PLATFORM_NAME}" == "arch linux" ]]
+    then
+	PACKAGE_MANAGER_COMMAND_UPDATE="pacman -y"
+	PACKAGE_MANAGER_COMMAND_UPGRADE="pacman -Syu"
+	PACKAGE_MANAGER_COMMAND_INSTALL="pacman -S"
+	PACKAGES_LIST=( "gcc" "cmake" "valgrind" "python" "ninja" "git" "perl")
     else
 	PACKAGE_MANAGER_COMMAND_UPDATE=""
 	PACKAGE_MANAGER_COMMAND_UPGRADE=""
@@ -537,6 +548,7 @@ QTConfigure()
     cd "build"
     
     ../configure -- "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
+    cmake -- "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
 }
 
 QTBuild()
