@@ -320,13 +320,13 @@ setPackagesToInstall()
 	PACKAGE_MANAGER_COMMAND_UPDATE="apt-get update"
 	PACKAGE_MANAGER_COMMAND_UPGRADE="apt-get upgrade"
 	PACKAGE_MANAGER_COMMAND_INSTALL="apt-get install -y"
-	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "ninja-build" "git" "perl")
+	PACKAGES_LIST=( "build-essential" "cmake" "valgrind" "python3" "ninja-build" "git" "perl" )
     elif [[ "${PLATFORM_NAME}" == "arch linux" ]]
     then
 	PACKAGE_MANAGER_COMMAND_UPDATE="pacman -Sy --noconfirm"
 	PACKAGE_MANAGER_COMMAND_UPGRADE="pacman -Su --noconfirm"
 	PACKAGE_MANAGER_COMMAND_INSTALL="pacman -S --noconfirm"
-	PACKAGES_LIST=( "gcc" "cmake" "valgrind" "python" "ninja" "git" "perl")
+	PACKAGES_LIST=( "gcc" "clang" "cmake" "make" "ninja" "valgrind" "git" "perl" "python" "llvm" "mesa" "mesa-utils" "libpng" "libjepg" "libtiff" "md4c" "linux-headers" "openssl" )
     else
 	PACKAGE_MANAGER_COMMAND_UPDATE=""
 	PACKAGE_MANAGER_COMMAND_UPGRADE=""
@@ -548,12 +548,17 @@ QTConfigure()
     cd "build"
     
     ../configure -- "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
-    cmake -- "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
+    cmake ../ "-DCMAKE_BUILD_TYPE=Debug" "-DFEATURE_developer_build=ON" "-DCMAKE_INSTALL_PREFIX=${QT_PATH}/install"
 }
 
 QTBuild()
 {
-    echo "To implement..."
+    QT_PATH="${INSTALL_PATH}/QT_${QT_VERSION_3NUMBERS}"
+    cd "${QT_PATH}"
+    mkdir -p "build"
+    mkdir -p "install"
+    cd "build"
+    cmake --build .
 }
 
 parseSingleArgument "${SCRIPT_ARG1}"
